@@ -1,5 +1,4 @@
 import json
-import bz2
 import pandas as pd
 from collections import Counter
 
@@ -12,13 +11,9 @@ keys = [
 
 def open_submissions(file):
     submissions = []
-    i = 0
     # This is over eight million lines!
-    with bz2.open(file) as f:
+    with open(file) as f:
         for line in f:
-            i += 1
-            if i > 250000:
-                break
             try:
                 l = json.loads(line)
                 submissions.append({k: l[k] for k in keys})
@@ -30,7 +25,7 @@ def open_submissions(file):
     return submissions
 
 # TODO: Get this from an argument.
-submissions = open_submissions("./data/RS_2016-10.bz2")
+submissions = open_submissions("./data/RS_2016-10")
 print(len(submissions))
 
 t = pd.DataFrame(submissions)
