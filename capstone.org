@@ -1,0 +1,7 @@
+#+TITLE: Senior Capstone
+#+AUTHOR: Carl Colglazier
+
+Topic idea: A synthesis of social computing and new media studies.
+
+Contemporary research on social computing focuses on the ability of
+computers to facilitate human social behavior.
