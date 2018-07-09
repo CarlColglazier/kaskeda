@@ -8,6 +8,7 @@ import lzma
 import bz2
 # Multiprocessing to run in parallel
 from multiprocessing import Pool
+from functools import partial
 
 keys = [
     'author', 'created_utc',
@@ -27,34 +28,80 @@ def open_compressed(path):
         return lzma.open(path)
     return open(path)
     
-def count_rt(path):
-    subs = []
-    # Adjust this to just take a sample.
-    i = 100000000
-    for line in itertools.islice(open_compressed(path), i):
+class RedditProcessor:
+    def __init__(self):
+        self.store = []
+
+    def filter(self, line):
+        return True
+
+    def process(self, obj):
         try:
-            if 'domain":"rt.com' in str(line):
-                l = json.loads(line)
-                subs.append(l["subreddit"])
+            self.store.append(obj["subreddit"])
         except:
-            print(path, line)
-            # TODO: Why are some submissions not working?
-            # Not a huge deal: we can ignore them for now,
-            # but this would be good to fix later.
             pass
-    return subs
+
+class RTCounter(RedditProcessor):
+    def filter(self, line):
+        #return True
+        return 'domain":"rt.com' in str(line)
+
+class BBCCounter(RedditProcessor):
+    def filter(self, line):
+        #return True
+        return 'domain":"bbc.com' in str(line)
+
+class RedditScraper:
+    process_list = []
+    def __init__(self, processes=1, path='./data'):
+        self._pool = Pool(processes)
+        self.path = path
+        #self._process_list = []
+        self._files = self._get_files()
+
+    def _get_files(self):
+        files = []
+        for file in os.listdir(self.path):
+            # Use join to get full file path.
+            location = os.path.join(self.path, file)
+            size = os.path.getsize(location)
+            files.append((size, location))
+        files.sort(key=lambda s: s[0], reverse=True)
+        return [x[1] for x in files]
+            
+    def add_process(self, p):
+        # TODO: Check here if `p` is a class?
+        RedditScraper.process_list.append(p)
+
+    def _run(f, processes):
+        classes = [x() for x in processes]
+        i = 10000000
+        for line in itertools.islice(open_compressed(f), i):
+            for c in classes:
+                if c.filter(line):
+                    try:
+                        c.process(json.loads(line))
+                    except:
+                        pass
+        return classes
+
+    def run(self):
+        p = self._pool.map(
+            partial(RedditScraper._run, processes=RedditScraper.process_list),
+            self._files
+        )
+        # flatten
+        results = [list() for _ in range(len(RedditScraper.process_list))]
+        for p_results in p:
+            for i, r in enumerate(p_results):
+                results[i] += r.store
+        return results
 
 if __name__ == '__main__':
-    # TODO: Don't hardcode this.
-    path = '/scratch/ccolglaz/data/'
-    files = []
-    for file in os.listdir(path):
-        # Use join to get full file path.
-        location = os.path.join(path, file)
-        size = os.path.getsize(location)
-        files.append((size, location))
-    files.sort(key=lambda s: s[0], reverse=True)
-    files = [x[1] for x in files]
-    p = Pool(64)
-    subs = p.map(count_rt, files)
-    print(Counter(itertools.chain(*subs)).most_common(100))
+    scraper = RedditScraper(processes=64, path='/scratch/ccolglaz/data/')
+    scraper.add_process(RTCounter)
+    scraper.add_process(BBCCounter)
+    results = scraper.run()
+    print(Counter(results[0]).most_common(10))
+    print(Counter(results[1]).most_common(10))
+    
